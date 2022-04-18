@@ -1,0 +1,78 @@
+version: "3.6"
+
+services:
+
+  elasticsearch:
+
+    image: elasticsearch:7.17.1
+    container_name: telos-hyperion_elasticsearch
+    environment:
+      discovery.type: single-node
+      ES_JAVA_OPTS: "-Xms2g -Xmx2g"
+
+  rabbitmq:
+
+    image: rabbitmq:3.9.14-management
+    container_name: telos-hyperion_rabbitmq
+    ports: ["15672:15672"]
+
+  redis:
+
+    image: redis:6.2.6
+    container_name: telos-hyperion_redis
+
+  nodeos:
+
+    build:
+      context: ./nodeos/build
+      args:
+        # EOSIO on GitHub
+        - repository=EOSIO/eos
+        - release=v2.1.0
+        - deb=eosio_2.1.0-1-ubuntu-20.04_amd64.deb
+        # Snapshot on Amazon S3
+        - bucket=telos-snapshots
+        - chain=testnet
+        - archive=telos-testnet-20211020-blknum-136229794.tar.gz
+    image: varilink/telos-hyperion/nodeos
+    container_name: telos-hyperion_nodeos
+    ports: ["8888:8888"]
+    volumes:
+      - ./nodeos/config/config.ini:/config/config.ini
+      - nodeos:/data
+
+  indexer:
+
+    build: ./hyperion/build
+    image: varilink/telos-hyperion
+    container_name: telos-hyperion_indexer
+    command: npx pm2-runtime start ecosystem.config.js --only telos-local-testnet-indexer
+    volumes:
+      - ./hyperion/config/ecosystem.config.js:/home/node/app/ecosystem.config.js
+      - ./hyperion/config/connections.json:/home/node/app/connections.json
+      - ./hyperion/config/chains/telos-local-testnet.config.json:/home/node/app/chains/telos-local-testnet.config.json
+      - tcpdump:/tcpdump
+
+  api:
+
+    build: ./hyperion/build
+    image: varilink/telos-hyperion
+    container_name: telos-hyperion_api
+    command: npx pm2-runtime start ecosystem.config.js --only telos-local-testnet-api
+    ports: ["7000:7000"]
+    volumes:
+      - ./hyperion/config/ecosystem.config.js:/home/node/app/ecosystem.config.js
+      - ./hyperion/config/connections.json:/home/node/app/connections.json
+      - ./hyperion/config/chains/telos-local-testnet.config.json:/home/node/app/chains/telos-local-testnet.config.json
+      - tcpdump:/tcpdump
+
+  kibana:
+
+    image: kibana:7.17.1
+    depends_on: [elasticsearch]
+    ports: ["5601:5601"]
+    volumes: ["./kibana/kibana.yml:/user/share/kibana/config/kibana.yml"]
+
+volumes:
+  nodeos:
+  tcpdump:
